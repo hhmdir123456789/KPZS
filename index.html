@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>数学之美：动态公式可视化科普馆 | 大明DM</title>
+    <style>
+        :root { --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-top: env(safe-area-inset-top, 0px); --theme-color: #66fcf1; --theme-accent: #45a29e; --theme-bg: #0b0c10; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; overflow: hidden; background-color: var(--theme-bg); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+        canvas { display: block; touch-action: none; }
+
+        #brand-badge {
+            position: fixed; top: calc(10px + var(--safe-top)); right: 12px;
+            color: #ffd700; font-size: 12px; font-weight: bold;
+            letter-spacing: 1px; z-index: 99; pointer-events: none;
+            text-shadow: 0 0 10px rgba(255,215,0,0.6);
+            background: rgba(31,40,51,0.7); padding: 3px 10px;
+            border-radius: 20px; border: 1px solid rgba(255,215,0,0.3);
+            transition: opacity 0.3s;
+        }
+
+        #ui { position: absolute; top: calc(8px + var(--safe-top)); width: 100%; text-align: center; pointer-events: none; z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: opacity 0.3s; }
+
+        #category-tabs { display: flex; gap: 8px; pointer-events: auto; flex-wrap: wrap; justify-content: center; }
+        .cat-btn { padding: 5px 12px; font-size: 12px; font-weight: bold; border-radius: 20px; background: #1f2833; color: #888; border: 2px solid var(--theme-accent); cursor: pointer; transition: all 0.3s; outline: none; font-family: inherit; }
+        .cat-btn.active { background: var(--theme-accent); color: #0b0c10; box-shadow: 0 0 15px var(--theme-accent); }
+        .cat-btn.fav-active { border-color: #ffd700; color: #ffd700; }
+        .cat-btn.fav-active.active { background: #ffd700; color: #0b0c10; box-shadow: 0 0 15px #ffd700; }
+
+        #search-input {
+            pointer-events: auto; padding: 6px 12px; font-size: 12px;
+            border-radius: 20px; background: #1f2833; color: var(--theme-color);
+            border: 1px solid var(--theme-accent); outline: none; width: 60%; max-width: 250px;
+            text-align: center; font-family: inherit;
+        }
+        #search-input::placeholder { color: #666; }
+
+        select { pointer-events: auto; padding: 6px 12px; font-size: 12px; border-radius: 6px; background: #1f2833; color: var(--theme-color); border: 1px solid var(--theme-color); outline: none; max-width: 90%; font-weight: bold; }
+
+        #formula { position: absolute; top: calc(135px + var(--safe-top)); width: 100%; text-align: center; font-size: 16px; color: #ffd700; text-shadow: 0 0 10px #ffd700; pointer-events: none; font-family: monospace; font-weight: bold; padding: 0 10px; box-sizing: border-box; }
+        #desc { position: absolute; top: calc(160px + var(--safe-top)); width: 100%; text-align: center; font-size: 12px; color: #c5c6c7; pointer-events: none; padding: 0 15px; box-sizing: border-box; text-shadow: 0 0 5px rgba(0,0,0,0.8); }
+
+        #control-panel { position: absolute; bottom: calc(10px + var(--safe-bottom)); width: 92%; max-width: 520px; left: 50%; transform: translateX(-50%); background: rgba(31,40,51,0.85); border: 1px solid var(--theme-accent); border-radius: 10px; padding: 10px 14px; z-index: 20; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); display: flex; flex-direction: column; gap: 6px; transition: opacity 0.3s; }
+
+        #control-buttons, #control-buttons-2 { display: flex; gap: 6px; justify-content: center; margin-bottom: 2px; flex-wrap: wrap; }
+        .ctrl-btn { flex: 1; min-width: 55px; padding: 6px 8px; font-size: 11px; font-family: inherit; font-weight: bold; border-radius: 6px; border: 1px solid var(--theme-accent); background: rgba(11,12,16,0.5); color: var(--theme-color); cursor: pointer; transition: all 0.2s; }
+        .ctrl-btn:active { background: var(--theme-color); color: #0b0c10; }
+        .ctrl-btn.active { background: var(--theme-accent); color: #0b0c10; }
+        .ctrl-btn.fav { color: #ffd700; border-color: #ffd700; }
+        .ctrl-btn.fav.active { background: #ffd700; color: #0b0c10; }
+
+        .param-row { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--theme-color); }
+        .param-row span { width: 65px; text-align: left; }
+        .param-row input[type=range] { flex: 1; margin: 0 8px; accent-color: var(--theme-color); cursor: pointer; height: 6px; }
+        .param-row .val { width: 40px; text-align: right; color: #ffd700; font-weight: bold; font-family: monospace; }
+
+        #hint { position: absolute; bottom: calc(2px + var(--safe-bottom)); width: 100%; text-align: center; font-size: 9px; color: #666; pointer-events: none; z-index: 5; transition: opacity 0.3s; }
+        #no-result { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 16px; color: #666; pointer-events: none; text-align: center; z-index: 5; }
+
+        /* 演示模式 */
+        body.demo-mode #ui, body.demo-mode #control-panel, body.demo-mode #hint, body.demo-mode #brand-badge { opacity: 0; pointer-events: none; }
+
+        /* 🌟 手机端适配 */
+        @media (max-width: 768px) {
+            #brand-badge { font-size: 10px; padding: 2px 8px; }
+            #category-tabs { gap: 4px; }
+            .cat-btn { padding: 4px 8px; font-size: 11px; }
+            #search-input { font-size: 11px; padding: 5px 10px; }
+            select { font-size: 11px; padding: 5px 8px; max-width: 85%; }
+            #formula { top: calc(125px + var(--safe-top)); font-size: 14px; }
+            #desc { top: calc(148px + var(--safe-top)); font-size: 11px; }
+            #control-panel { padding: 8px; gap: 5px; width: 94%; }
+            .ctrl-btn { font-size: 10px; padding: 5px 6px; min-width: 45px; }
+            .param-row { font-size: 10px; }
+            .param-row span { width: 55px; }
+            .param-row input[type=range] { height: 8px; margin: 0 5px; }
+            .param-row .val { width: 35px; font-size: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="brand-badge">DM | 大明DM</div>
+    <div id="ui">
+        <div id="category-tabs">
+            <button class="cat-btn active" data-category="math" onclick="switchCategory('math')">📐 数学</button>
+            <button class="cat-btn" data-category="physics" onclick="switchCategory('physics')">⚛️ 物理</button>
+            <button class="cat-btn fav-active" data-category="favorites" onclick="switchCategory('favorites')">⭐ 收藏</button>
+            <button class="cat-btn" data-category="recent" onclick="switchCategory('recent')">🕘 最近</button>
+        </div>
+        <input type="text" id="search-input" placeholder="🔍 搜索公式 (如：螺线、蝴蝶)..." oninput="onSearchInput()">
+        <select id="modeSelect" onchange="changeMode()"></select>
+    </div>
+
+    <div id="formula">公式加载中...</div>
+    <div id="desc">科普解读加载中...</div>
+    <div id="no-result">未找到匹配的公式<br><span style="font-size:12px; color:#444;">请尝试其他关键词或切换分类</span></div>
+
+    <div id="control-panel">
+        <div id="control-buttons">
+            <button class="ctrl-btn" id="btn-prev">⬅️ 上一个</button>
+            <button class="ctrl-btn" id="btn-next">下一个 ➡️</button>
+            <button class="ctrl-btn" id="btn-pause">⏸ 暂停</button>
+            <button class="ctrl-btn" id="btn-reset">🔄 重置</button>
+            <button class="ctrl-btn" id="btn-random">🎲 随机</button>
+        </div>
+        <div id="control-buttons-2">
+            <button class="ctrl-btn fav" id="btn-fav">☆ 收藏</button>
+            <button class="ctrl-btn" id="btn-theme">🎨 经典霓虹</button>
+            <button class="ctrl-btn" id="btn-screenshot">📸 截图</button>
+            <button class="ctrl-btn" id="btn-demo">✨ 演示</button>
+        </div>
+        <div class="param-row">
+            <span>粒子数量</span>
+            <input type="range" id="param-count" min="5" max="80" step="5" value="30">
+            <span class="val" id="val-count">30</span>
+        </div>
+        <div class="param-row">
+            <span>轨迹长度</span>
+            <input type="range" id="param-trail" min="3" max="30" step="1" value="15">
+            <span class="val" id="val-trail">15</span>
+        </div>
+        <div class="param-row">
+            <span>动画速度</span>
+            <input type="range" id="param-speed" min="0.005" max="0.1" step="0.005" value="0.02">
+            <span class="val" id="val-speed">0.02</span>
+        </div>
+        <div class="param-row">
+            <span>缩放大小</span>
+            <input type="range" id="param-scale" min="0.1" max="0.8" step="0.05" value="0.35">
+            <span class="val" id="val-scale">0.35</span>
+        </div>
+        <div id="specific-params"></div>
+    </div>
+
+    <div id="hint">ESC 退出演示 | 空格暂停 | ← → 切换公式 | 双击画布重置</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        // 控制台签名
+        console.log("%c 🚀 数学之美：动态公式可视化科普馆 ", "background: #0b0c10; color: #66fcf1; font-size: 16px; font-weight: bold; padding: 5px; border: 1px solid #66fcf1; border-radius: 4px;");
+        console.log("%c 大明DM 出品 | 版权所有 © 2026 ", "color: #45a29e; font-size: 12px; font-weight: bold;");
+
+        window.onerror = function(msg, url, lineNo) {
+            console.error('Game Error:', msg, 'Line:', lineNo);
+            return false;
+        };
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        let cx = width / 2, cy = height / 2;
+
+        let globalScale = 0.35;
+        let globalSpeed = 0.02;
+        let particleCount = 30;
+        let trailLength = 15;
+        let specificParams = {};
+
+        let currentMode = 'math_ellipse';
+        let currentCategory = 'math';
+        let time = 0;
+        let isPaused = false;
+        let particles = [];
+        let lastFrameTime = 0;
+
+        // 🌟 配色主题
+        const themes = {
+            neon: { name: '经典霓虹', colors: ['#FF3366', '#FF9933', '#FFD700', '#33FF99', '#33CCFF', '#9933FF', '#FF33CC'], bg: '#0b0c10', color: '#66fcf1', accent: '#45a29e' },
+            cyberpunk: { name: '赛博朋克', colors: ['#FF007A', '#FFAA00', '#00FFCC', '#00AAFF', '#AA00FF'], bg: '#0a0014', color: '#00FFCC', accent: '#FF007A' },
+            aurora: { name: '极光', colors: ['#00FF88', '#00CCFF', '#AA88FF', '#FF88CC', '#88FFFF'], bg: '#001122', color: '#88FFFF', accent: '#00FF88' },
+            mono: { name: '单色', colors: ['#FFFFFF', '#CCCCCC', '#999999', '#666666', '#EEEEEE'], bg: '#000000', color: '#FFFFFF', accent: '#666666' }
+        };
+        let currentTheme = 'neon';
+        let colors = themes.neon.colors;
+
+        // 🌟 本地存储读取
+        let favorites = []; let recentViews = [];
+        try { favorites = JSON.parse(localStorage.getItem('dm_math_favorites')) || []; } catch(e) { favorites = []; }
+        try { recentViews = JSON.parse(localStorage.getItem('dm_math_recent')) || []; } catch(e) { recentViews = []; }
+
+        // ================= 100个数学与物理公式库 =================
+        const formulas = {
+            math_ellipse: { name: "椭圆谐振", formula: "x=a·cos(t), y=b·sin(t)", desc: "基础参数方程，展示椭圆的完美对称性。", fn: (t) => ({ x: 1.5*Math.cos(t), y: 1.0*Math.sin(t) }) },
+            math_circle: { name: "标准圆", formula: "x=cos(t), y=sin(t)", desc: "最简单的参数方程，半径为1的单位圆。", fn: (t) => ({ x: Math.cos(t), y: Math.sin(t) }) },
+            math_cardioid: { name: "心形线", formula: "r=a(1-cosθ)", desc: "极坐标下的心形曲线。", params: { a: { label: '系数a', min: 0.5, max: 2, step: 0.1, default: 1 } }, fn: (t, p) => { const a = (p && p.a) || 1; const r = a * (1 - Math.cos(t)); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_rose: { name: "玫瑰线", formula: "r=cos(kθ)", desc: "极坐标玫瑰线，k控制花瓣数量。", params: { k: { label: '花瓣k', min: 1, max: 10, step: 1, default: 3 } }, fn: (t, p) => { const k = (p && p.k) || 3; const r = Math.cos(k*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_spiral: { name: "阿基米德螺线", formula: "r=a+bθ", desc: "半径随角度线性增加。", params: { b: { label: '增长率b', min: 0.05, max: 0.3, step: 0.01, default: 0.15 } }, fn: (t, p) => { const b = (p && p.b) || 0.15; const r = 0.1 + b*t; return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_log_spiral: { name: "对数螺线", formula: "r=a·e^(bθ)", desc: "鹦鹉螺壳的曲线。", params: { b: { label: '指数b', min: 0.05, max: 0.3, step: 0.01, default: 0.15 } }, fn: (t, p) => { const b = (p && p.b) || 0.15; const r = 0.1 * Math.exp(b*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_lissajous: { name: "李萨如图形", formula: "x=sin(fx·t), y=sin(fy·t)", desc: "频率比决定图案形状。", params: { fx: { label: '频率fx', min: 1, max: 10, step: 1, default: 3 }, fy: { label: '频率fy', min: 1, max: 10, step: 1, default: 4 } }, fn: (t, p) => { const fx = (p && p.fx) || 3; const fy = (p && p.fy) || 4; return { x: Math.sin(fx*t), y: Math.sin(fy*t) }; } },
+            math_damped: { name: "阻尼振荡", formula: "y=e^(-βx)·sin(x)", desc: "振幅逐渐减小的振动。", params: { beta: { label: '衰减β', min: 0.01, max: 0.3, step: 0.01, default: 0.1 } }, fn: (t, p) => { const beta = (p && p.beta) || 0.1; return { x: (t-10)*0.3, y: Math.exp(-beta*t) * Math.sin(t) * 1.5 }; } },
+            math_cardioid2: { name: "倒心形线", formula: "r=a(1+sinθ)", desc: "心形线的相位偏移版本。", fn: (t) => { const r = 1 + Math.sin(t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_rose4: { name: "四叶玫瑰线", formula: "r=cos(2θ)", desc: "极坐标玫瑰线，k为偶数。", fn: (t) => { const r = Math.cos(2*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_rose5: { name: "五叶玫瑰线", formula: "r=cos(5θ/2)", desc: "非整数频率玫瑰线。", fn: (t) => { const r = Math.cos(2.5*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_rose8: { name: "八叶玫瑰线", formula: "r=cos(4θ)", desc: "高频玫瑰线。", fn: (t) => { const r = Math.cos(4*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_hyperbolic: { name: "双曲螺线", formula: "r=a/θ", desc: "无限逼近原点。", fn: (t) => { const r = 1 / (t + 0.1); return { x: r*Math.cos(t)*2, y: r*Math.sin(t)*2 }; } },
+            math_fermat: { name: "费马螺线", formula: "r=±√θ", desc: "半径按平方根增长。", fn: (t) => { const r = Math.sqrt(Math.abs(t)) * 0.5; return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_lemniscate: { name: "伯努利双纽线", formula: "r²=a²cos(2θ)", desc: "8字形曲线。", fn: (t) => { const r = Math.sqrt(Math.abs(Math.cos(2*t))) * 1.5; return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_limacon: { name: "蜗牛线", formula: "r=a+b·cosθ", desc: "心形线的推广。", fn: (t) => { const r = 1 + 0.5*Math.cos(t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_cochleoid: { name: "蚶线", formula: "r=a·sinθ/θ", desc: "包含sinc函数。", fn: (t) => { const r = Math.sin(t) / (t + 0.01); return { x: r*Math.cos(t)*2, y: r*Math.sin(t)*2 }; } },
+            math_dahlia: { name: "大丽花曲线", formula: "r=a·cos(kθ)", desc: "复合三角函数叠加。", fn: (t) => { const r = Math.cos(5*t) * Math.sin(2*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_lissajous2: { name: "李萨如 2", formula: "x=sin(5t), y=cos(3t)", desc: "频率比5:3。", fn: (t) => ({ x: Math.sin(5*t), y: Math.cos(3*t) }) },
+            math_lissajous3: { name: "李萨如 3", formula: "x=sin(7t), y=sin(4t)", desc: "高频比7:4。", fn: (t) => ({ x: Math.sin(7*t), y: Math.sin(4*t) }) },
+            math_butterfly1: { name: "蝴蝶曲线 1", formula: "r=e^sinθ - 2cos(4θ)", desc: "Fay发现的蝴蝶曲线。", fn: (t) => { const r = Math.exp(Math.sin(t)) - 2*Math.cos(4*t); return { x: r*Math.cos(t)*0.5, y: r*Math.sin(t)*0.5 }; } },
+            math_butterfly2: { name: "蝴蝶曲线 2", formula: "复杂复合三角函数", desc: "改进版蝴蝶曲线。", fn: (t) => { const r = Math.exp(Math.cos(t)) - 2*Math.cos(4*t) + Math.pow(Math.sin(t/12), 5); return { x: r*Math.cos(t)*0.4, y: r*Math.sin(t)*0.4 }; } },
+            math_butterfly3: { name: "蝴蝶曲线 3", formula: "r=sin(3θ)+cos(5θ)", desc: "纯三角函数叠加。", fn: (t) => { const r = Math.sin(3*t) + Math.cos(5*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_spirograph: { name: "万花尺 (内摆线)", formula: "x=(R-r)cos(t)+d·cos(k·t)", desc: "小圆在大圆内滚动。", fn: (t) => { const R = 1, r = 0.3, d = 0.5; const k = (R-r)/r; return { x: (R-r)*Math.cos(t) + d*Math.cos(k*t), y: (R-r)*Math.sin(t) - d*Math.sin(k*t) }; } },
+            math_epitrochoid: { name: "外摆线", formula: "小圆在大圆外滚动", desc: "外摆线。", fn: (t) => { const R = 1, r = 0.2, d = 0.5; const k = (R+r)/r; return { x: (R+r)*Math.cos(t) - d*Math.cos(k*t), y: (R+r)*Math.sin(t) - d*Math.sin(k*t) }; } },
+            math_astroid: { name: "星形线", formula: "x=cos³t, y=sin³t", desc: "内摆线特例。", fn: (t) => ({ x: Math.pow(Math.cos(t), 3)*1.5, y: Math.pow(Math.sin(t), 3)*1.5 }) },
+            math_deltoid: { name: "菱角线", formula: "x=2cos(t)+cos(2t)", desc: "内摆线特例。", fn: (t) => ({ x: (2*Math.cos(t) + Math.cos(2*t))*0.7, y: (2*Math.sin(t) - Math.sin(2*t))*0.7 }) },
+            math_cycloid: { name: "摆线", formula: "x=r(t-sin t), y=r(1-cos t)", desc: "最速降线。", fn: (t) => ({ x: (t - Math.sin(t))*0.2, y: (1 - Math.cos(t))*0.2 }) },
+            math_superellipse: { name: "超椭圆", formula: "|x/a|^n+|y/b|^n=1", desc: "指数控制形状。", fn: (t) => { const n=4; const c=Math.cos(t), s=Math.sin(t); return { x: Math.sign(c)*Math.pow(Math.abs(c), 2/n)*1.5, y: Math.sign(s)*Math.pow(Math.abs(s), 2/n) }; } },
+            math_trefoil: { name: "三叶结", formula: "x=sin(t)+2sin(2t)", desc: "最简单的非平凡纽结。", fn: (t) => ({ x: (Math.sin(t) + 2*Math.sin(2*t))*0.4, y: (Math.cos(t) - 2*Math.cos(2*t))*0.4 }) },
+            math_cinquefoil: { name: "五叶结", formula: "高阶纽结曲线", desc: "频率比3:1。", fn: (t) => ({ x: (Math.sin(t) + 2*Math.sin(3*t))*0.3, y: (Math.cos(t) - 2*Math.cos(3*t))*0.3 }) },
+            math_torus_knot: { name: "环面纽结", formula: "p=2, q=3 投影", desc: "环面上缠绕。", fn: (t) => { const p=2, q=3, R=1, r=0.4; return { x: (R + r*Math.cos(q*t))*Math.cos(p*t), y: (R + r*Math.cos(q*t))*Math.sin(p*t) }; } },
+            math_cornuspiral: { name: "柯纽螺线", formula: "菲涅尔积分", desc: "光学衍射。", fn: (t) => { let x=0, y=0; for(let i=0; i<20; i++) { const u = t + i*0.1; x += Math.cos(u*u); y += Math.sin(u*u); } return { x: x*0.05, y: y*0.05 }; } },
+            math_catenary: { name: "悬链线", formula: "y=cosh(x)", desc: "自然下垂形状。", fn: (t) => ({ x: (t - 5)*0.5, y: (Math.cosh((t - 5)*0.5) - 1)*0.5 - 1 }) },
+            math_tractrix: { name: "曳物线", formula: "x=t-tanh(t), y=sech(t)", desc: "被拖动物体轨迹。", fn: (t) => { const x = t - Math.tanh(t); const y = 1/Math.cosh(t); return { x: (x-2)*0.5, y: y*1.5 }; } },
+            math_cissoid: { name: "蔓叶线", formula: "y²=x³/(2a-x)", desc: "倍立方问题。", fn: (t) => { const x = 2*Math.pow(Math.sin(t), 2); const y = 2*Math.pow(Math.sin(t), 3)/Math.cos(t); return { x: (x-1)*1.5, y: y*0.5 }; } },
+            math_witch: { name: "箕舌线", formula: "y=a³/(x²+a²)", desc: "阿涅西曲线。", fn: (t) => { const x = Math.tan(t); const y = 1/(1 + x*x); return { x: x*0.5, y: y*2 - 1 }; } },
+            math_folium: { name: "笛卡尔叶形线", formula: "x³+y³=3axy", desc: "笛卡尔发现。", fn: (t) => { const x = 3*t/(1+t*t*t); const y = 3*t*t/(1+t*t*t); return { x: (x-1)*1.5, y: (y-1)*1.5 }; } },
+            math_fresnel: { name: "法布里-珀罗", formula: "干涉曲线", desc: "多光束干涉。", fn: (t) => { const r = Math.cos(5*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_am_wave: { name: "调幅波 (AM)", formula: "y=(1+0.5sin(t))sin(10t)", desc: "振幅调制。", fn: (t) => ({ x: (t-10)*0.3, y: (1 + 0.5*Math.sin(t)) * Math.sin(10*t) * 0.5 }) },
+            math_fm_wave: { name: "调频波 (FM)", formula: "y=sin(10t + 5sin(t))", desc: "频率调制。", fn: (t) => ({ x: (t-10)*0.3, y: Math.sin(10*t + 5*Math.sin(t)) * 0.8 }) },
+            math_fourier_sq: { name: "傅里叶方波", formula: "Σ 1/n·sin(n·t)", desc: "奇次谐波叠加。", fn: (t) => { let x=0, y=0; for(let n=1; n<=9; n+=2) { x += Math.sin(n*t)/n; y += Math.cos(n*t)/n; } return { x: x*1.5, y: y*1.5 }; } },
+            math_fourier_saw: { name: "傅里叶锯齿波", formula: "Σ (-1)^n/n·sin(n·t)", desc: "所有整数次谐波。", fn: (t) => { let x=0, y=0; for(let n=1; n<=10; n++) { x += Math.pow(-1, n) * Math.sin(n*t)/n; y += Math.pow(-1, n) * Math.cos(n*t)/n; } return { x: x*1.5, y: y*1.5 }; } },
+            math_fourier_tri: { name: "傅里叶三角波", formula: "Σ 1/n²·cos(n·t)", desc: "快速收敛。", fn: (t) => { let x=0, y=0; for(let n=1; n<=10; n+=2) { x += Math.cos(n*t)/(n*n); y += Math.sin(n*t)/(n*n); } return { x: x*3, y: y*3 }; } },
+            math_joukowski: { name: "茹科夫斯基变换", formula: "z = ζ + 1/ζ", desc: "共形映射。", fn: (t) => { const r = 1.2; const x = r*Math.cos(t) + Math.cos(t)/(r*r); const y = r*Math.sin(t) - Math.sin(t)/(r*r); return { x: x*1.5, y: y*1.5 }; } },
+            math_lorenz2d: { name: "混沌吸引子2D", formula: "洛伦兹投影", desc: "混沌理论。", fn: (t) => { const x = Math.sin(t) * Math.cos(0.5*t); const y = Math.sin(1.5*t) * Math.cos(0.7*t); return { x: x*2, y: y*2 }; } },
+            math_parabola: { name: "抛物线", formula: "y=x²", desc: "匀加速运动。", fn: (t) => { const x = (t-10)*0.5; return { x: x, y: x*x*0.5 - 1 }; } },
+            math_hyperbola: { name: "双曲线", formula: "x²-y²=1", desc: "双曲函数。", fn: (t) => ({ x: Math.cosh(t)*0.5, y: Math.sinh(t)*0.5 }) },
+            math_sine_wave: { name: "正弦波", formula: "y=sin(x)", desc: "简谐振动。", fn: (t) => ({ x: (t-10)*0.3, y: Math.sin(t)*1.5 }) },
+            math_cosine_wave: { name: "余弦波", formula: "y=cos(x)", desc: "相位偏移。", fn: (t) => ({ x: (t-10)*0.3, y: Math.cos(t)*1.5 }) },
+            math_clover: { name: "四叶草", formula: "r=cos(2θ)+sin(2θ)", desc: "叠加曲线。", fn: (t) => { const r = Math.cos(2*t) + Math.sin(2*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_star: { name: "五角星", formula: "星形多边形", desc: "半径突变。", fn: (t) => { const r = Math.cos(5*t) > 0 ? 1.5 : 0.8; return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_gear: { name: "齿轮曲线", formula: "r=1+0.1·cos(10θ)", desc: "高频微振荡。", fn: (t) => { const r = 1 + 0.1*Math.cos(10*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_egg: { name: "蛋形曲线", formula: "r=1/(1+0.3cosθ)", desc: "偏心率变体。", fn: (t) => { const r = 1 / (1 + 0.3*Math.cos(t)); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            math_tear: { name: "水滴线", formula: "r=1-sinθ", desc: "平移旋转。", fn: (t) => { const r = 1 - Math.sin(t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+
+            phys_shm: { name: "简谐振动", formula: "x=A·cos(ωt+φ)", desc: "弹簧振子。", fn: (t) => ({ x: Math.cos(t)*1.5, y: Math.sin(t)*1.5 }) },
+            phys_damped_osc: { name: "阻尼振动", formula: "x=A·e^(-βt)·cos(ωt)", desc: "受摩擦力影响。", params: { beta: { label: '衰减β', min: 0.01, max: 0.2, step: 0.01, default: 0.05 } }, fn: (t, p) => { const beta = (p && p.beta) || 0.05; const r = Math.exp(-beta*t); return { x: r*Math.cos(t)*2, y: r*Math.sin(t)*2 }; } },
+            phys_projectile: { name: "抛体运动", formula: "x=v₀cosθ·t, y=v₀sinθ·t - ½gt²", desc: "重力抛物线。", fn: (t) => { const tt = t % 10; return { x: (tt - 5)*0.5, y: (tt * 2 - tt * tt * 0.2) * 0.5 - 1 }; } },
+            phys_pendulum: { name: "单摆", formula: "θ=θ₀·cos(√(g/L)t)", desc: "小角度近似。", fn: (t) => ({ x: Math.cos(t)*1.5, y: Math.sin(t)*1.5 }) },
+            phys_wave_2: { name: "波的干涉", formula: "y=sin(t+x)+sin(t-x)", desc: "驻波形成。", fn: (t) => ({ x: (t-10)*0.3, y: Math.sin(t + (t-10)*0.1) + Math.sin(t - (t-10)*0.1) }) },
+            phys_standing_wave: { name: "驻波", formula: "y=2A·sin(kx)·cos(ωt)", desc: "节点固定。", fn: (t) => ({ x: (t-10)*0.3, y: Math.sin((t-10)*0.5) * Math.cos(t*2) }) },
+            phys_beat: { name: "拍频", formula: "y=2A·cos(Δω·t/2)·sin(ωt)", desc: "频率相近叠加。", fn: (t) => { const tt = t % 20; return { x: (tt - 10)*0.3, y: Math.cos(0.5*t) * Math.sin(5*t) * 1.5 }; } },
+            phys_doppler: { name: "多普勒效应", formula: "f' = f(v+v₀)/(v-v_s)", desc: "相对运动频率变化。", fn: (t) => { const tt = t % 20; return { x: (tt - 10)*0.3, y: Math.sin(t * (1 + 0.5*Math.sin(t))) * 1.5 }; } },
+            phys_em_wave: { name: "电磁波", formula: "E=E₀sin(kx-ωt)", desc: "电场磁场垂直。", fn: (t) => ({ x: Math.sin(t)*2, y: Math.cos(t)*2 }) },
+            phys_kepler: { name: "开普勒轨道", formula: "r = p/(1 + e·cosθ)", desc: "行星运动。", params: { e: { label: '偏心率e', min: 0, max: 0.9, step: 0.1, default: 0.6 } }, fn: (t, p) => { const e = (p && p.e !== undefined) ? p.e : 0.6; const r = 1.5 / (1 + e * Math.cos(t)); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            phys_gravity: { name: "万有引力模拟", formula: "F = G·m₁·m₂/r²", desc: "引力轨道。", fn: (t) => { const r = 1.5; const theta = t*0.5; return { x: r*Math.cos(theta), y: r*Math.sin(theta) }; } },
+            phys_electric_dipole: { name: "电偶极子", formula: "E ∝ 1/r³", desc: "电场线分布。", fn: (t) => { const r = Math.cos(t) * Math.cos(t); return { x: r*Math.cos(t)*2, y: r*Math.sin(t)*2 }; } },
+            phys_magnetic_field: { name: "磁场线", formula: "B = μ₀I/(2πr)", desc: "环形磁场。", fn: (t) => ({ x: Math.cos(t)*1.5, y: Math.sin(t)*1.5 }) },
+            phys_brownian: { name: "布朗运动", formula: "随机游走模型", desc: "无规则运动。", fn: (t) => { const r = Math.sqrt(t % 10); const theta = t * 5; return { x: r*Math.cos(theta)*0.5, y: r*Math.sin(theta)*0.5 }; } },
+            phys_maxwell_boltzmann: { name: "麦克斯韦速度分布", formula: "f(v) ∝ v²·e^(-mv²/2kT)", desc: "速度分布曲线。", fn: (t) => { const v = (t % 20) * 0.5; return { x: v, y: v*v * Math.exp(-v*v*0.1) }; } },
+            phys_quantum_packet: { name: "量子波包", formula: "ψ(x,t)=e^(-x²)·e^(iωt)", desc: "波包演化。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.exp(-x*x*0.05) * Math.cos(t*2) }; } },
+            phys_quantum_harmonic: { name: "量子谐振子", formula: "ψ_n(x) = H_n(x)·e^(-x²/2)", desc: "谐振子波函数。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: (2*x*x - 1) * Math.exp(-x*x*0.05) * 0.5 }; } },
+            phys_hydrogen_orbital: { name: "氢原子轨道 (2D)", formula: "Y_l^m(θ,φ) 投影", desc: "电子概率分布。", fn: (t) => { const r = Math.cos(2*t); return { x: r*Math.cos(t)*1.5, y: r*Math.sin(t)*1.5 }; } },
+            phys_special_relativity: { name: "相对论光行差", formula: "tanθ' = sinθ/(cosθ+v/c)", desc: "光线偏折。", fn: (t) => { const v = 0.8; const theta = t; const tanTheta = Math.sin(theta) / (Math.cos(theta) + v); return { x: Math.atan(tanTheta)*2, y: Math.sin(theta)*1.5 }; } },
+            phys_geodesic: { name: "时空测地线", formula: "d²x/dτ² = -Γ·(dx/dτ)²", desc: "弯曲时空轨迹。", fn: (t) => { const r = 1.5; const phi = t*0.5; return { x: r*Math.cos(phi)*1.5, y: r*Math.sin(phi)*1.5 }; } },
+            phys_spring: { name: "弹簧振子", formula: "F = -kx", desc: "胡克定律。", fn: (t) => ({ x: Math.cos(t)*1.5, y: Math.sin(t)*1.5 }) },
+            phys_heat_equation: { name: "热传导方程", formula: "∂u/∂t = α·∇²u", desc: "温度扩散。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.exp(-x*x*0.05) }; } },
+            phys_schrodinger: { name: "薛定谔方程", formula: "iħ·∂ψ/∂t = Ĥψ", desc: "波函数演化。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.cos(x*0.5)*Math.exp(-x*x*0.02) }; } },
+            phys_wave_eq: { name: "波动方程", formula: "∂²u/∂t² = c²·∇²u", desc: "波的传播。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.sin(x - t*2) }; } },
+            phys_diffraction: { name: "单缝衍射", formula: "I = I₀·sinc²(β)", desc: "衍射强度。", fn: (t) => { const x = (t % 20) - 10; const beta = x * 0.5; const sinc = Math.sin(beta)/beta; return { x: x*0.3, y: sinc*sinc*2 - 1 }; } },
+            phys_interference: { name: "双缝干涉", formula: "I = 4I₀·cos²(Δφ/2)", desc: "明暗条纹。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.cos(x*2)*Math.cos(x*2)*2 - 1 }; } },
+            phys_polarization: { name: "偏振光", formula: "I = I₀·cos²θ", desc: "马吕斯定律。", fn: (t) => { const theta = t; return { x: Math.cos(theta)*2, y: Math.sin(theta)*Math.cos(theta)*2 }; } },
+            phys_lens: { name: "透镜成像", formula: "1/f = 1/u + 1/v", desc: "光线聚焦。", fn: (t) => { const u = (t % 20) - 10; const v = 1/(1/10 - 1/u); return { x: u*0.3, y: v*0.3 }; } },
+            phys_mirror: { name: "球面镜成像", formula: "1/f = 1/u + 1/v", desc: "反射成像。", fn: (t) => { const u = (t % 20) - 10; const v = 1/(1/10 + 1/u); return { x: u*0.3, y: v*0.3 }; } },
+            phys_capacitor: { name: "电容器充放电", formula: "V(t) = V₀·(1 - e^(-t/RC))", desc: "RC电路。", fn: (t) => { const tt = t % 20; return { x: (tt-10)*0.3, y: (1 - Math.exp(-tt*0.3))*2 - 1 }; } },
+            phys_inductor: { name: "电感电流", formula: "I(t) = I₀·(1 - e^(-t·R/L))", desc: "RL电路。", fn: (t) => { const tt = t % 20; return { x: (tt-10)*0.3, y: (1 - Math.exp(-tt*0.3))*2 - 1 }; } },
+            phys_rlc: { name: "RLC振荡", formula: "L·d²q/dt² + R·dq/dt + q/C = 0", desc: "阻尼振荡。", fn: (t) => { const r = Math.exp(-0.05*t); return { x: r*Math.cos(t*2)*2, y: r*Math.sin(t*2)*2 }; } },
+            phys_thermodynamics: { name: "卡诺循环", formula: "η = 1 - T_c/T_h", desc: "热机循环。", fn: (t) => { const tt = t % 20; return { x: Math.cos(tt*0.5)*2, y: Math.sin(tt*0.5)*2 }; } },
+            phys_entropy: { name: "熵增原理", formula: "ΔS ≥ 0", desc: "时间箭头。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.abs(x)*0.2 - 1 }; } },
+            phys_ideal_gas: { name: "理想气体状态方程", formula: "PV = nRT", desc: "气体状态。", fn: (t) => { const r = 2; return { x: r*Math.cos(t)*1.5, y: r*Math.sin(t)*1.5 }; } },
+            phys_lorentz_force: { name: "洛伦兹力", formula: "F = qv × B", desc: "带电粒子受力。", fn: (t) => { const r = 1.5; const theta = t*2; return { x: r*Math.cos(theta), y: r*Math.sin(theta) }; } },
+            phys_cyclotron: { name: "回旋加速器", formula: "r = mv/(qB)", desc: "圆周运动。", fn: (t) => { const r = (t % 10) * 0.3; return { x: r*Math.cos(t*2), y: r*Math.sin(t*2) }; } },
+            phys_hall_effect: { name: "霍尔效应", formula: "V_H = IB/(nqd)", desc: "横向电压。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.sin(x*0.5)*1.5 }; } },
+            phys_superconductor: { name: "迈斯纳效应", formula: "B = 0 (inside)", desc: "磁悬浮。", fn: (t) => { const r = 1.5; const theta = t; return { x: r*Math.cos(theta), y: r*Math.sin(theta)*0.5 }; } },
+            phys_blackbody: { name: "黑体辐射", formula: "B(λ,T) = (2hc²/λ⁵)·1/(e^(hc/λkT)-1)", desc: "普朗克公式。", fn: (t) => { const x = (t % 20) * 0.5; const y = (2/(Math.pow(x,5))) / (Math.exp(10/x)-1); return { x: (x-5)*0.5, y: y*1000 - 1 }; } },
+            phys_photoelectric: { name: "光电效应", formula: "E_k = hν - W", desc: "光子逸出电子。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.max(0, x*0.2) - 1 }; } },
+            phys_compton: { name: "康普顿散射", formula: "Δλ = h/(m_e·c)·(1-cosθ)", desc: "波长变长。", fn: (t) => { const r = 1 + 0.5*Math.cos(t); return { x: r*Math.cos(t)*1.5, y: r*Math.sin(t)*1.5 }; } },
+            phys_de_broglie: { name: "德布罗意波", formula: "λ = h/p", desc: "物质波。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.cos(x*2)*1.5 }; } },
+            phys_uncertainty: { name: "海森堡不确定性", formula: "Δx·Δp ≥ ħ/2", desc: "测不准原理。", fn: (t) => { const r = 1.5; const theta = t; return { x: r*Math.cos(theta), y: r*Math.sin(theta) }; } },
+            phys_pauli: { name: "泡利不相容", formula: "电子排布 1s² 2s² 2p⁶", desc: "量子态独占。", fn: (t) => { const r = Math.cos(3*t); return { x: r*Math.cos(t)*2, y: r*Math.sin(t)*2 }; } },
+            phys_radioactive: { name: "放射性衰变", formula: "N(t) = N₀·e^(-λt)", desc: "指数衰减。", fn: (t) => { const x = (t % 20) - 10; return { x: x*0.3, y: Math.exp(-x*0.2)*2 - 1 }; } },
+            phys_fission: { name: "核裂变链式反应", formula: "n + U-235 → Ba + Kr + 3n", desc: "释放能量。", fn: (t) => { const r = 1.5; const theta = t*3; return { x: r*Math.cos(theta), y: r*Math.sin(theta) }; } },
+            phys_fusion: { name: "核聚变", formula: "4H → He + 2e⁺ + 2ν + 能量", desc: "恒星能量。", fn: (t) => { const r = 1.5; const theta = t*0.5; return { x: r*Math.cos(theta)*1.5, y: r*Math.sin(theta)*1.5 }; } },
+            phys_higgs: { name: "希格斯机制", formula: "m = g·v", desc: "质量起源。", fn: (t) => { const r = Math.cos(t); return { x: r*Math.cos(t)*2, y: r*Math.sin(t)*2 }; } },
+            phys_cosmology: { name: "宇宙膨胀", formula: "v = H₀·d", desc: "哈勃定律。", fn: (t) => { const r = (t % 10) * 0.3; return { x: r*Math.cos(t), y: r*Math.sin(t) }; } },
+            phys_gravitational_wave: { name: "引力波", formula: "h = ΔL/L", desc: "时空涟漪。", fn: (t) => { const r = 1.5 + 0.5*Math.sin(t*2); return { x: r*Math.cos(t), y: r*Math.sin(t) }; } }
+        };
+
+        function applyTheme(themeKey) {
+            currentTheme = themeKey;
+            const t = themes[themeKey];
+            colors = t.colors;
+            document.documentElement.style.setProperty('--theme-color', t.color);
+            document.documentElement.style.setProperty('--theme-accent', t.accent);
+            document.documentElement.style.setProperty('--theme-bg', t.bg);
+            document.body.style.backgroundColor = t.bg;
+            // 主题切换后重新生成粒子，应用新配色
+            initParticles();
+        }
+
+        function saveFavorites() {
+            try { localStorage.setItem('dm_math_favorites', JSON.stringify(favorites)); } catch(e) {}
+        }
+        function saveRecent() {
+            try { localStorage.setItem('dm_math_recent', JSON.stringify(recentViews)); } catch(e) {}
+        }
+
+        function initUI() {
+            const select = document.getElementById('modeSelect');
+            const noResult = document.getElementById('no-result');
+            if (!select) return;
+            select.innerHTML = '';
+
+            const searchKeyword = (document.getElementById('search-input').value || '').toLowerCase();
+
+            for (const key in formulas) {
+                const f = formulas[key];
+                const isMath = key.startsWith('math_');
+                const isPhysics = key.startsWith('phys_');
+
+                let show = false;
+                if (currentCategory === 'favorites') show = favorites.includes(key);
+                else if (currentCategory === 'recent') show = recentViews.includes(key);
+                else if (currentCategory === 'math') show = isMath;
+                else if (currentCategory === 'physics') show = isPhysics;
+
+                if (show && searchKeyword) {
+                    const matchName = f.name.toLowerCase().includes(searchKeyword);
+                    const matchDesc = (f.desc || '').toLowerCase().includes(searchKeyword);
+                    const matchFormula = (f.formula || '').toLowerCase().includes(searchKeyword);
+                    show = matchName || matchDesc || matchFormula;
+                }
+
+                if (show) {
+                    const opt = document.createElement('option');
+                    opt.value = key;
+                    opt.innerText = f.name;
+                    select.appendChild(opt);
+                }
+            }
+
+            if (select.options.length > 0) {
+                noResult.style.display = 'none';
+                // 如果当前模式在列表里，保持选中；否则选第一个
+                const options = Array.from(select.options).map(o => o.value);
+                if (options.includes(currentMode)) {
+                    select.value = currentMode;
+                } else {
+                    select.selectedIndex = 0;
+                    currentMode = select.value;
+                }
+                changeMode();
+            } else {
+                noResult.style.display = 'block';
+                document.getElementById('formula').innerText = '';
+                document.getElementById('desc').innerText = '';
+                particles = [];
+            }
+        }
+
+        function switchCategory(category) {
+            if (currentCategory === category) return;
+            currentCategory = category;
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.category === category);
+            });
+            initUI();
+        }
+
+        function onSearchInput() { initUI(); }
+
+        function renderParamSliders() {
+            const container = document.getElementById('specific-params');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const f = formulas[currentMode];
+            if (!f || !f.params) { specificParams = {}; return; }
+
+            const formulaParams = f.params;
+            specificParams = {};
+
+            for (const key in formulaParams) {
+                const config = formulaParams[key];
+                specificParams[key] = config.default;
+
+                const row = document.createElement('div');
+                row.className = 'param-row';
+                row.innerHTML = `
+                    <span>${config.label}</span>
+                    <input type="range" id="param-${key}" min="${config.min}" max="${config.max}" step="${config.step}" value="${config.default}">
+                    <span class="val" id="val-${key}">${config.default}</span>
+                `;
+                container.appendChild(row);
+
+                document.getElementById(`param-${key}`).addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                        specificParams[key] = val;
+                        document.getElementById(`val-${key}`).innerText = val;
+                        time = 0; initParticles();
+                    }
+                });
+            }
+        }
+
+        // 🌟 控制面板事件（防御性编程）
+        document.getElementById('param-count').addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            if (!isNaN(val) && val > 0) { particleCount = Math.min(val, 80); document.getElementById('val-count').innerText = particleCount; initParticles(); }
+        });
+        document.getElementById('param-trail').addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            if (!isNaN(val) && val > 0) { trailLength = Math.min(val, 30); document.getElementById('val-trail').innerText = trailLength; }
+        });
+        document.getElementById('param-speed').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (!isNaN(val) && val > 0) { globalSpeed = val; document.getElementById('val-speed').innerText = val; }
+        });
+        document.getElementById('param-scale').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (!isNaN(val) && val > 0) { globalScale = val; document.getElementById('val-scale').innerText = val; initParticles(); }
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', (e) => {
+            isPaused = !isPaused;
+            e.target.innerText = isPaused ? '▶ 播放' : '⏸ 暂停';
+            e.target.classList.toggle('active', isPaused);
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => { time = 0; initParticles(); });
+
+        document.getElementById('btn-random').addEventListener('click', () => {
+            const select = document.getElementById('modeSelect');
+            const keys = Array.from(select.options).map(o => o.value);
+            if (keys.length === 0) return;
+            const randomKey = keys[Math.floor(Math.random() * keys.length)];
+            select.value = randomKey;
+            changeMode();
+        });
+
+        document.getElementById('btn-prev').addEventListener('click', () => {
+            const select = document.getElementById('modeSelect');
+            if (select.selectedIndex > 0) { select.selectedIndex--; changeMode(); }
+        });
+
+        document.getElementById('btn-next').addEventListener('click', () => {
+            const select = document.getElementById('modeSelect');
+            if (select.selectedIndex < select.options.length - 1) { select.selectedIndex++; changeMode(); }
+        });
+
+        document.getElementById('btn-fav').addEventListener('click', () => {
+            const idx = favorites.indexOf(currentMode);
+            if (idx >= 0) favorites.splice(idx, 1);
+            else favorites.push(currentMode);
+            saveFavorites();
+            updateFavButton();
+            if (currentCategory === 'favorites') initUI();
+        });
+
+        document.getElementById('btn-theme').addEventListener('click', () => {
+            const keys = Object.keys(themes);
+            const idx = keys.indexOf(currentTheme);
+            const nextKey = keys[(idx + 1) % keys.length];
+            applyTheme(nextKey);
+            document.getElementById('btn-theme').innerText = `🎨 ${themes[nextKey].name}`;
+        });
+
+        document.getElementById('btn-screenshot').addEventListener('click', () => {
+            try {
+                const link = document.createElement('a');
+                link.download = `大明DM_公式科普_${currentMode}_${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch (e) { console.error('截图失败:', e); }
+        });
+
+        document.getElementById('btn-demo').addEventListener('click', () => {
+            document.body.classList.add('demo-mode');
+        });
+
+        function updateFavButton() {
+            const btn = document.getElementById('btn-fav');
+            if (favorites.includes(currentMode)) {
+                btn.innerText = '★ 已收藏';
+                btn.classList.add('active');
+            } else {
+                btn.innerText = '☆ 收藏';
+                btn.classList.remove('active');
+            }
+        }
+
+        class Particle {
+            constructor(index, total) {
+                this.offset = (index / total) * Math.PI * 2;
+                this.color = colors[index % colors.length];
+                this.history = [];
+            }
+
+            update(t) {
+                const f = formulas[currentMode];
+                if (!f || !f.fn) return;
+
+                const pos = f.fn(t + this.offset, specificParams || {});
+                if (isNaN(pos.x) || isNaN(pos.y)) { pos.x = 0; pos.y = 0; }
+
+                const scaleFactor = Math.min(width, height) * globalScale;
+                this.x = cx + pos.x * scaleFactor;
+                this.y = cy + pos.y * scaleFactor;
+
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > trailLength) this.history.shift();
+            }
+
+            draw() {
+                if (!this.x || !this.y) return;
+
+                // 性能优化：粒子数大于40时，关闭阴影
+                const useShadow = particleCount <= 40;
+
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 1.5;
+                ctx.globalAlpha = 0.3;
+                for (let i = 0; i < this.history.length - 1; i++) {
+                    ctx.moveTo(this.history[i].x, this.history[i].y);
+                    ctx.lineTo(this.history[i+1].x, this.history[i+1].y);
+                }
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                if (useShadow) { ctx.shadowBlur = 10; ctx.shadowColor = this.color; }
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle(i, particleCount));
+            }
+        }
+
+        function drawConnections() {
+            // 性能优化：粒子数大于40时，缩小连线距离阈值
+            const distThreshold = particleCount > 40 ? 80 : 150 / Math.sqrt(particleCount) * 3;
+
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < distThreshold) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = particles[i].color;
+                        ctx.globalAlpha = (1 - (dist / distThreshold)) * 0.5;
+                        ctx.lineWidth = 0.6;
+                        ctx.stroke();
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+            }
+        }
+
+        function animate(currentTime) {
+            try {
+                // 优化：切后台或暂停时，不消耗额外性能
+                if (isPaused) {
+                    lastFrameTime = currentTime;
+                    requestAnimationFrame(animate);
+                    return;
+                }
+
+                ctx.fillStyle = `rgba(0, 0, 0, 0.2)`;
+                ctx.fillRect(0, 0, width, height);
+
+                time += globalSpeed;
+
+                particles.forEach(p => { p.update(time); p.draw(); });
+                drawConnections();
+            } catch (e) { console.error('Animation error:', e); }
+            requestAnimationFrame(animate);
+        }
+
+        function changeMode() {
+            const select = document.getElementById('modeSelect');
+            if (select && select.value) currentMode = select.value;
+            else currentMode = 'math_ellipse';
+
+            const f = formulas[currentMode];
+            if (f) {
+                document.getElementById('formula').innerText = "公式: " + f.formula;
+                document.getElementById('desc').innerText = "📖 " + f.desc;
+            }
+
+            // 记录到最近浏览
+            if (currentMode) {
+                recentViews = recentViews.filter(k => k !== currentMode);
+                recentViews.unshift(currentMode);
+                if (recentViews.length > 10) recentViews = recentViews.slice(0, 10);
+                saveRecent();
+            }
+
+            renderParamSliders();
+            updateFavButton();
+            time = 0;
+            initParticles();
+        }
+
+        // 🌟 键盘快捷键（过滤输入框）
+        window.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            if (e.key === 'Escape') document.body.classList.remove('demo-mode');
+            if (e.code === 'Space') { e.preventDefault(); document.getElementById('btn-pause').click(); }
+            if (e.key === 'ArrowLeft') document.getElementById('btn-prev').click();
+            if (e.key === 'ArrowRight') document.getElementById('btn-next').click();
+        });
+
+        // 🌟 双击画布重置（防误触）
+        let lastTap = 0;
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.closest('#ui') || e.target.closest('#control-panel')) return;
+            time = 0; initParticles();
+        });
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.closest('#ui') || e.target.closest('#control-panel')) return;
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                e.preventDefault(); time = 0; initParticles();
+            }
+            lastTap = now;
+        }, { passive: false });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cx = width / 2; cy = height / 2;
+            initParticles();
+        });
+
+        // 🌟 初始化流程
+        applyTheme('neon');
+        initUI();
+        // 确保第一帧时间正确
+        requestAnimationFrame((t) => {
+            lastFrameTime = t;
+            animate(t);
+        });
+    </script>
+</body>
+</html>
